@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Chat Application</title>
+    <style>
+        body {
+            font-family: 'Georgia', 'Times New Roman', serif;
+            max-width: 700px;
+            margin: 30px auto;
+            padding: 20px;
+            background-color: #e8f4f8;
+        }
+        
+        h1 {
+            color: #1a4d6d;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .section {
+            background: #ffffff;
+            padding: 25px;
+            margin-bottom: 20px;
+            border: 2px solid #3498db;
+            border-radius: 5px;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        
+        input[type="text"],
+        input[type="password"],
+        textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #3498db;
+            border-radius: 3px;
+            font-size: 14px;
+            font-family: 'Georgia', 'Times New Roman', serif;
+        }
+        
+        textarea {
+            height: 100px;
+            resize: vertical;
+        }
+        
+        button {
+            padding: 10px 20px;
+            margin-right: 10px;
+            background-color: #e74c3c;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-family: 'Georgia', 'Times New Roman', serif;
+        }
+        
+        button:hover {
+            background-color: #c0392b;
+        }
+        
+        .btn-secondary {
+            background-color: #f39c12;
+        }
+        
+        .btn-secondary:hover {
+            background-color: #d68910;
+        }
+        
+        .message {
+            padding: 10px;
+            margin-bottom: 15px;
+            border-radius: 3px;
+        }
+        
+        .success {
+            background-color: #d5f4e6;
+            color: #0e6c3a;
+            border: 1px solid #a3e4c5;
+        }
+        
+        .error {
+            background-color: #fadbd8;
+            color: #8b1a10;
+            border: 1px solid #f5b7b1;
+        }
+        
+        .hidden {
+            display: none;
+        }
+        
+        #chatDisplay {
+            border: 2px solid #3498db;
+            padding: 15px;
+            height: 300px;
+            overflow-y: auto;
+            background-color: #f0f8ff;
+            border-radius: 3px;
+            margin-bottom: 15px;
+        }
+        
+        .chat-msg {
+            margin-bottom: 12px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #bdd6e8;
+        }
+        
+        .chat-msg:last-child {
+            border-bottom: none;
+        }
+        
+        .sender {
+            font-weight: bold;
+            color: #8e44ad;
+        }
+        
+        .timestamp {
+            font-size: 11px;
+            color: #7f8c8d;
+        }
+        
+        .user-info {
+            margin-bottom: 15px;
+            padding: 10px;
+            background-color: #d6eaf8;
+            border-radius: 3px;
+            color: #1a4d6d;
+        }
+    </style>
+</head>
+<body>
+    <h1>Simple Chat Application</h1>
+    
+    <!-- Login/Register Section -->
+    <div id="authSection">
+        <div class="section">
+            <h2>Login or Register</h2>
+            <div id="authMessage"></div>
+            
+            <div class="form-group">
+                <label for="username">Username:</label>
+                <input type="text" id="username">
+            </div>
+            
+            <div class="form-group">
+                <label for="password">Password:</label>
+                <input type="password" id="password">
+            </div>
+            
+            <button onclick="handleLogin()">Login</button>
+            <button class="btn-secondary" onclick="handleRegister()">Register</button>
+        </div>
+    </div>
+    
+    <!-- Chat Section -->
+    <div id="chatSection" class="hidden">
+        <div class="section">
+            <div class="user-info">
+                Logged in as: <strong id="currentUser"></strong>
+                <button onclick="handleLogout()" style="float: right;">Logout</button>
+            </div>
+            
+            <div id="chatMessage"></div>
+            
+            <div class="form-group">
+                <label for="chatWith">Chat with (username):</label>
+                <input type="text" id="chatWith">
+            </div>
+            
+            <div class="form-group">
+                <label>Conversation:</label>
+                <div id="chatDisplay">
+                    <p>Enter a username above to view conversation</p>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="messageText">Your Message:</label>
+                <textarea id="messageText"></textarea>
+            </div>
+            
+            <button onclick="handleSendMessage()">Send Message</button>
+        </div>
+    </div>
+    
+    <script>
+        let currentUsername = '';
+        let fetchInterval = null;
+        
+        function showMessage(msg, type, containerId) {
+            const container = document.getElementById(containerId);
+            container.innerHTML = `<div class="message ${type}">${msg}</div>`;
+            setTimeout(() => container.innerHTML = '', 3000);
+        }
+        
+        function handleRegister() {
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value;
+            
+            if (!username || !password) {
+                showMessage('Please fill in all fields', 'error', 'authMessage');
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('action', 'register');
+            formData.append('username', username);
+            formData.append('password', password);
+            
+            fetch('auth.php', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    currentUsername = username;
+                    showChatSection();
+                } else {
+                    showMessage(data.message, 'error', 'authMessage');
+                }
+            })
+            .catch(error => showMessage('Error: ' + error, 'error', 'authMessage'));
+        }
+        
+        function handleLogin() {
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value;
+            
+            if (!username || !password) {
+                showMessage('Please fill in all fields', 'error', 'authMessage');
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('action', 'login');
+            formData.append('username', username);
+            formData.append('password', password);
+            
+            fetch('auth.php', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    currentUsername = username;
+                    showChatSection();
+                } else {
+                    showMessage(data.message, 'error', 'authMessage');
+                }
+            })
+            .catch(error => showMessage('Error: ' + error, 'error', 'authMessage'));
+        }
+        
+        function showChatSection() {
+            document.getElementById('authSection').className = 'hidden';
+            document.getElementById('chatSection').className = '';
+            document.getElementById('currentUser').textContent = currentUsername;
+            
+            document.getElementById('chatWith').addEventListener('input', function() {
+                const chatWith = this.value.trim();
+                if (chatWith) {
+                    fetchMessages();
+                    if (fetchInterval) clearInterval(fetchInterval);
+                    fetchInterval = setInterval(fetchMessages, 2000);
+                } else {
+                    if (fetchInterval) clearInterval(fetchInterval);
+                    document.getElementById('chatDisplay').innerHTML = '<p>Enter a username above to view conversation</p>';
+                }
+            });
+        }
+        
+        function handleSendMessage() {
+            const receiver = document.getElementById('chatWith').value.trim();
+            const message = document.getElementById('messageText').value.trim();
+            
+            if (!receiver) {
+                showMessage('Please enter a username to chat with', 'error', 'chatMessage');
+                return;
+            }
+            
+            if (!message) {
+                showMessage('Please enter a message', 'error', 'chatMessage');
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('action', 'send');
+            formData.append('receiver', receiver);
+            formData.append('message', message);
+            
+            fetch('chat.php', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    document.getElementById('messageText').value = '';
+                    fetchMessages();
+                } else {
+                    showMessage(data.message, 'error', 'chatMessage');
+                }
+            })
+            .catch(error => showMessage('Error: ' + error, 'error', 'chatMessage'));
+        }
+        
+        function fetchMessages() {
+            const receiver = document.getElementById('chatWith').value.trim();
+            if (!receiver) return;
+            
+            fetch(`chat.php?action=fetch&chat_with=${encodeURIComponent(receiver)}`)
+            .then(response => {
+                console.log('Fetch response status:', response.status);
+                return response.text();
+            })
+            .then(text => {
+                console.log('Raw response:', text);
+                try {
+                    const data = JSON.parse(text);
+                    if (data.success) {
+                        displayMessages(data.messages);
+                    } else {
+                        console.error('Fetch failed:', data.message);
+                        showMessage(data.message, 'error', 'chatMessage');
+                    }
+                } catch (e) {
+                    console.error('JSON parse error:', e);
+                    console.error('Response was:', text);
+                }
+            })
+            .catch(error => {
+                console.error('Fetch error:', error);
+                showMessage('Error loading messages', 'error', 'chatMessage');
+            });
+        }
+        
+        function displayMessages(messages) {
+            const display = document.getElementById('chatDisplay');
+            
+            if (messages.length === 0) {
+                display.innerHTML = '<p>No messages yet. Start the conversation!</p>';
+                return;
+            }
+            
+            let html = '';
+            messages.forEach(msg => {
+                const time = new Date(msg.created_at).toLocaleString();
+                html += `
+                    <div class="chat-msg">
+                        <span class="sender">${escapeHtml(msg.sender_username)}:</span>
+                        ${escapeHtml(msg.message)}
+                        <br><span class="timestamp">${time}</span>
+                    </div>
+                `;
+            });
+            
+            display.innerHTML = html;
+            display.scrollTop = display.scrollHeight;
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        function handleLogout() {
+            if (fetchInterval) clearInterval(fetchInterval);
+            currentUsername = '';
+            
+            document.getElementById('chatSection').className = 'hidden';
+            document.getElementById('authSection').className = '';
+            document.getElementById('username').value = '';
+            document.getElementById('password').value = '';
+            document.getElementById('chatWith').value = '';
+            document.getElementById('messageText').value = '';
+        }
+    </script>
+</body>
+</html>
