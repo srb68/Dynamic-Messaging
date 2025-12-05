@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat App</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 30px auto; padding: 20px; background: linear-gradient(135deg, #1e3c72 0%, #2a5298 50%, #7e8ba3 100%); min-height: 100vh; }
+        .container { background: white; border-radius: 12px; padding: 25px; box-shadow: 0 8px 32px rgba(0,0,0,0.3); }
+        h1 { text-align: center; color: white; margin-bottom: 20px; font-size: 32px; }
+        .section { margin-bottom: 20px; padding-bottom: 20px; border-bottom: 2px solid #e3f2fd; }
+        .section:last-child { border-bottom: none; }
+        .section h3 { color: #1e3c72; margin-bottom: 10px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; color: #2a5298; }
+        input, textarea { width: 100%; padding: 10px; border: 2px solid #90caf9; border-radius: 6px; font-size: 14px; }
+        input:focus, textarea:focus { outline: none; border-color: #2196F3; box-shadow: 0 0 0 3px rgba(33,150,243,0.1); }
+        textarea { resize: vertical; min-height: 80px; }
+        button { padding: 10px 20px; background: linear-gradient(135deg, #2196F3 0%, #1976d2 100%); color: white; border: none; border-radius: 6px; cursor: pointer; margin-right: 10px; font-weight: bold; }
+        button:hover { background: linear-gradient(135deg, #1976d2 0%, #1565c0 100%); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(33,150,243,0.4); }
+        .message { padding: 12px; margin: 10px 0; border-radius: 6px; }
+        .success { background: #c8e6c9; color: #2e7d32; border: 2px solid #81c784; }
+        .error { background: #ffcdd2; color: #c62828; border: 2px solid #ef5350; }
+        .logged-in { background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%); padding: 12px; border-radius: 8px; margin-bottom: 20px; text-align: center; font-weight: bold; color: #1565c0; display: none; border: 2px solid #90caf9; }
+        .user-list, .chat-display { border: 2px solid #90caf9; border-radius: 6px; padding: 10px; background: #f5f9ff; overflow-y: auto; }
+        .user-list { max-height: 150px; }
+        .chat-display { height: 300px; }
+        .user-item { padding: 10px; margin: 5px 0; background: white; border: 2px solid #bbdefb; border-radius: 6px; cursor: pointer; transition: all 0.2s; }
+        .user-item:hover { background: #e3f2fd; border-color: #2196F3; transform: translateX(4px); }
+        .chat-message { padding: 8px 0; margin-bottom: 8px; border-bottom: 1px solid #e0e0e0; }
+        .chat-message strong { color: #1976d2; font-size: 14px; }
+        .chat-message small { color: #666; font-size: 11px; display: block; margin-top: 2px; }
+        .auto-refresh { color: #2196F3; font-size: 12px; font-style: italic; margin-top: 5px; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h1>Simple Chatbot Application</h1>
+    <div class="container">
+        <div id="loggedInStatus" class="logged-in"></div>
+        <div id="statusMessage"></div>
+        
+        <div class="section">
+            <h3>Login / Register</h3>
+            <label>Username:</label>
+            <input type="text" id="username" placeholder="Enter username">
+            <label style="margin-top: 10px;">Password:</label>
+            <input type="password" id="password" placeholder="Enter password">
+            <div style="margin-top: 10px;">
+                <button onclick="register()">Register</button>
+                <button onclick="login()">Login</button>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h3>Available Users</h3>
+            <button onclick="listUsers()">Refresh User List</button>
+            <div id="userList" class="user-list" style="margin-top: 10px;">Click "Refresh User List" to see users</div>
+        </div>
+        
+        <div class="section">
+            <h3>View Conversation</h3>
+            <label>Chat with (username):</label>
+            <input type="text" id="chatWith" placeholder="Enter username" oninput="handleChatInput()">
+            <div style="margin-top: 10px;">
+                <button onclick="manualListen()">Listen</button>
+                <button onclick="toggleAutoListen()" id="autoListenBtn">Auto Listen</button>
+            </div>
+            <div id="pollingStatus" class="auto-refresh"></div>
+            <div id="chatDisplay" class="chat-display" style="margin-top: 10px;">Enter a username above to view messages</div>
+            <label style="margin-top: 10px;">Type your message:</label>
+            <textarea id="messageText" placeholder="Type your message..."></textarea>
+        </div>
+    </div>
+    
+    <script>
+        var currentUser = '', isLoggedIn = false, pollTimeout = null, isPolling = false;
+        var autoListenEnabled = false;
+        var typingTimeout = null;
+        
+        window.onload = () => checkSession();
+        
+        function checkSession() {
+            ajax('GET', 'check_session.php', null, data => {
+                if (data.success && data.logged_in) {
+                    currentUser = data.username;
+                    isLoggedIn = true;
+                    document.getElementById('username').value = currentUser;
+                    document.getElementById('loggedInStatus').textContent = 'Logged in as: ' + currentUser;
+                    document.getElementById('loggedInStatus').style.display = 'block';
+                    listUsers();
+                }
+            });
+        }
+        
+        function showMsg(msg, type) {
+            var el = document.getElementById('statusMessage');
+            el.innerHTML = '<div class="message ' + type + '">' + msg + '</div>';
+            setTimeout(() => el.innerHTML = '', 3000);
+        }
+        
+        function ajax(method, url, data, callback) {
+            var xhr = new XMLHttpRequest();
+            xhr.onreadystatechange = function() {
+                if (this.readyState == 4 && this.status == 200) callback(JSON.parse(this.responseText));
+            };
+            xhr.open(method, url, true);
+            if (method == 'POST') {
+                xhr.setRequestHeader('Content-type', 'application/x-www-form-urlencoded');
+                xhr.send(data);
+            } else xhr.send();
+        }
+        
+        function register() {
+            var u = document.getElementById('username').value.trim();
+            var p = document.getElementById('password').value;
+            if (!u || !p) { showMsg('Please fill in username and password', 'error'); return; }
+            
+            ajax('POST', 'auth.php', 'action=register&username=' + encodeURIComponent(u) + '&password=' + encodeURIComponent(p), data => {
+                if (data.success) {
+                    currentUser = u;
+                    isLoggedIn = true;
+                    document.getElementById('loggedInStatus').textContent = 'Logged in as: ' + currentUser;
+                    document.getElementById('loggedInStatus').style.display = 'block';
+                    showMsg('Registration successful!', 'success');
+                    listUsers();
+                } else showMsg(data.message, 'error');
+            });
+        }
+        
+        function login() {
+            var u = document.getElementById('username').value.trim();
+            var p = document.getElementById('password').value;
+            if (!u || !p) { showMsg('Please fill in username and password', 'error'); return; }
+            
+            ajax('POST', 'auth.php', 'action=login&username=' + encodeURIComponent(u) + '&password=' + encodeURIComponent(p), data => {
+                if (data.success) {
+                    currentUser = u;
+                    isLoggedIn = true;
+                    document.getElementById('loggedInStatus').textContent = 'Logged in as: ' + currentUser;
+                    document.getElementById('loggedInStatus').style.display = 'block';
+                    showMsg('Login successful!', 'success');
+                    listUsers();
+                } else showMsg(data.message, 'error');
+            });
+        }
+        
+        function listUsers() {
+            ajax('GET', 'users.php', null, data => {
+                if (data.success) {
+                    var list = document.getElementById('userList');
+                    if (data.users.length === 0) { list.innerHTML = '<p>No users found</p>'; return; }
+                    var html = '';
+                    for (var i = 0; i < data.users.length; i++) {
+                        if (data.users[i].username !== currentUser) {
+                            html += '<div class="user-item" onclick="selectUser(\'' + esc(data.users[i].username) + '\')">' + esc(data.users[i].username) + '</div>';
+                        }
+                    }
+                    list.innerHTML = html || '<p>No other users available</p>';
+                }
+            });
+        }
+        
+        function selectUser(username) {
+            document.getElementById('chatWith').value = username;
+            handleChatInput();
+        }
+        
+        function manualListen() {
+            if (!isLoggedIn) { showMsg('Please login first', 'error'); return; }
+            var c = document.getElementById('chatWith').value.trim();
+            var m = document.getElementById('messageText').value.trim();
+            if (!c) { showMsg('Please enter a username to chat with', 'error'); return; }
+            if (!m) { showMsg('Please enter a message', 'error'); return; }
+            ajax('POST', 'chat.php', 'action=send&receiver=' + encodeURIComponent(c) + '&message=' + encodeURIComponent(m), data => {
+                if (data.success) { document.getElementById('messageText').value = ''; showMsg('Message sent!', 'success'); fetchMessagesOnce(); }
+                else { showMsg(data.message, 'error'); }
+            });
+        }
+        
+        function toggleAutoListen() {
+            autoListenEnabled = !autoListenEnabled;
+            var btn = document.getElementById('autoListenBtn');
+            if (autoListenEnabled) {
+                btn.textContent = 'Stop Auto Listen';
+                btn.style.background = 'linear-gradient(135deg, #f44336 0%, #d32f2f 100%)';
+                showMsg('Auto Listen enabled', 'success');
+                document.getElementById('messageText').setAttribute('oninput', 'autoSendMessage()');
+                var c = document.getElementById('chatWith').value.trim();
+                if (c && isLoggedIn) handleChatInput();
+            } else {
+                btn.textContent = 'Auto Listen';
+                btn.style.background = 'linear-gradient(135deg, #2196F3 0%, #1976d2 100%)';
+                showMsg('Auto Listen disabled', 'success');
+                document.getElementById('messageText').removeAttribute('oninput');
+                if (pollTimeout) { clearTimeout(pollTimeout); pollTimeout = null; isPolling = false; }
+                document.getElementById('pollingStatus').textContent = '';
+            }
+        }
+        
+        function fetchMessagesOnce() {
+            if (!isLoggedIn) return;
+            var r = document.getElementById('chatWith').value.trim();
+            if (!r) return;
+            ajax('GET', 'chat.php?action=fetch&chat_with=' + encodeURIComponent(r), null, data => {
+                if (data.success) {
+                    var d = document.getElementById('chatDisplay');
+                    if (data.messages.length === 0) { d.innerHTML = '<p>No messages yet. Start the conversation!</p>'; }
+                    else {
+                        var html = '';
+                        for (var i = 0; i < data.messages.length; i++) {
+                            var msg = data.messages[i];
+                            html += '<div class="chat-message"><strong>' + esc(msg.sender_username) + ':</strong> ' + esc(msg.message) + '<br><small>' + new Date(msg.created_at).toLocaleString() + '</small></div>';
+                        }
+                        d.innerHTML = html;
+                        d.scrollTop = d.scrollHeight;
+                    }
+                }
+            });
+        }
+        
+        var typingTimeout = null;
+        
+        function autoSendMessage() {
+            var m = document.getElementById('messageText').value.trim();
+            var c = document.getElementById('chatWith').value.trim();
+            if (!c || !isLoggedIn || !m) return;
+            if (typingTimeout) clearTimeout(typingTimeout);
+            typingTimeout = setTimeout(function() {
+                ajax('POST', 'chat.php', 'action=send&receiver=' + encodeURIComponent(c) + '&message=' + encodeURIComponent(m), data => {
+                    if (data.success) { document.getElementById('messageText').value = ''; fetchMessages(); }
+                });
+            }, 1000);
+        }
+        
+        function handleChatInput() {
+            if (!autoListenEnabled) return;
+            var c = document.getElementById('chatWith').value.trim();
+            if (pollTimeout) { clearTimeout(pollTimeout); pollTimeout = null; isPolling = false; }
+            if (c && isLoggedIn) { isPolling = true; document.getElementById('pollingStatus').textContent = 'Auto-refreshing every 2 seconds...'; fetchMessages(); }
+            else { document.getElementById('pollingStatus').textContent = ''; document.getElementById('chatDisplay').innerHTML = 'Enter a username above to view messages'; }
+        }
+        
+        function fetchMessages() {
+            if (!isLoggedIn) return;
+            var r = document.getElementById('chatWith').value.trim();
+            if (!r) { isPolling = false; document.getElementById('pollingStatus').textContent = ''; return; }
+            ajax('GET', 'chat.php?action=fetch&chat_with=' + encodeURIComponent(r), null, data => {
+                if (data.success) {
+                    var d = document.getElementById('chatDisplay');
+                    if (data.messages.length === 0) { d.innerHTML = '<p>No messages yet. Start the conversation!</p>'; }
+                    else {
+                        var html = '';
+                        for (var i = 0; i < data.messages.length; i++) {
+                            var msg = data.messages[i];
+                            html += '<div class="chat-message"><strong>' + esc(msg.sender_username) + ':</strong> ' + esc(msg.message) + '<br><small>' + new Date(msg.created_at).toLocaleString() + '</small></div>';
+                        }
+                        d.innerHTML = html; d.scrollTop = d.scrollHeight;
+                    }
+                }
+                if (isPolling && r && isLoggedIn) pollTimeout = setTimeout(fetchMessages, 2000);
+            });
+        }
+        
+        function esc(text) {
+            var div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>
